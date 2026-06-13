@@ -8,4 +8,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.ruff.lint]
-banned-imports = ["langgraph.checkpoint.sqlite"]
+select = ["E4", "E7", "E9", "F", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"langgraph.checkpoint.sqlite".msg = "Use AsyncPostgresSaver; SqliteSaver is forbidden by invariant I4."
