@@ -3,6 +3,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
+from src.infra.postgres_client import PostgresDatabase, create_pool, get_pool_config
 from src.temporal.config import get_temporal_config
 
 
@@ -48,3 +51,73 @@ def test_sqlite_saver_is_not_imported() -> None:
                 assert node.module not in forbidden
         text = path.read_text()
         assert "SqliteSaver" not in text
+
+
+def test_postgres_compose_creates_three_databases_with_pgvector() -> None:
+    compose = _compose_text()
+
+    assert "FROM postgres:16.4" in compose
+    assert "postgresql-16-pgvector=0.8.2-1.pgdg12+1" in compose
+    assert "dpkg -i --force-breaks" in compose
+    assert "CREATE DATABASE agent_knowledge;" in compose
+    assert "CREATE DATABASE agent_ops;" in compose
+    assert "POSTGRES_DB: agent_checkpoints" in compose
+    assert "CREATE EXTENSION IF NOT EXISTS vector;" in compose
+    assert '"5432:5432"' in compose
+    assert '"max_connections=200"' in compose
+
+
+def test_postgres_pool_config_defaults_to_three_databases(monkeypatch) -> None:
+    for env_name in ("DATABASE_URL", "KNOWLEDGE_DB_URL", "OPS_DB_URL"):
+        monkeypatch.delenv(env_name, raising=False)
+    monkeypatch.delenv("POSTGRES_POOL_MIN_SIZE", raising=False)
+    monkeypatch.delenv("POSTGRES_POOL_MAX_SIZE", raising=False)
+
+    configs = {
+        database: get_pool_config(database)
+        for database in (
+            PostgresDatabase.CHECKPOINTS,
+            PostgresDatabase.KNOWLEDGE,
+            PostgresDatabase.OPS,
+        )
+    }
+
+    assert configs[PostgresDatabase.CHECKPOINTS].dsn.endswith("/agent_checkpoints")
+    assert configs[PostgresDatabase.KNOWLEDGE].dsn.endswith("/agent_knowledge")
+    assert configs[PostgresDatabase.OPS].dsn.endswith("/agent_ops")
+    assert all(config.min_size == 1 for config in configs.values())
+    assert all(config.max_size == 10 for config in configs.values())
+
+
+@pytest.mark.asyncio
+async def test_postgres_databases_pgvector_and_pool_round_trip() -> None:
+    expected_database_names = {
+        PostgresDatabase.CHECKPOINTS: "agent_checkpoints",
+        PostgresDatabase.KNOWLEDGE: "agent_knowledge",
+        PostgresDatabase.OPS: "agent_ops",
+    }
+
+    for database, expected_name in expected_database_names.items():
+        pool = await create_pool(database)
+        try:
+            async with pool.acquire() as conn:
+                current_database = await conn.fetchval("SELECT current_database()")
+                vector_extension_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM pg_extension WHERE extname = 'vector'"
+                )
+                server_version = await conn.fetchval("SHOW server_version")
+                pooled_connection_count = await conn.fetchval(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND usename = current_user
+                    """
+                )
+        finally:
+            await pool.close()
+
+        assert current_database == expected_name
+        assert server_version.startswith("16.4")
+        assert vector_extension_count == 1
+        assert pooled_connection_count >= 1
