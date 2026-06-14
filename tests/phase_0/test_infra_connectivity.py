@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import time
 from pathlib import Path
 
 import httpx
@@ -222,3 +223,93 @@ def test_qdrant_health_collection_and_payload_indexes() -> None:
 
     indexed_fields = set(collection.payload_schema)
     assert set(PAYLOAD_INDEXES) <= indexed_fields
+
+
+def test_kuzu_shared_per_type_not_per_instance(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KUZU_GRAPHS_DIR", str(tmp_path))
+
+    import kuzu
+
+    from src.infra.kuzu_client import get_connection
+
+    db_path = tmp_path / "burger-order" / "domain.kuzu"
+
+    conn = get_connection("burger-order")
+    assert db_path.exists(), f"Expected DB at {db_path}"
+    assert isinstance(conn, kuzu.Connection)
+
+    conn2 = get_connection("burger-order")
+    assert conn is conn2
+
+    conn3 = get_connection("payment-agent")
+    assert conn is not conn3
+    assert not (tmp_path / "burger-order" / "instance-1" / "domain.kuzu").exists()
+
+    with pytest.raises(ValueError, match="single path segment"):
+        get_connection("burger-order/instance-1")
+
+
+def _seed_kuzu_test_graph(agent_type: str, node_count: int) -> None:
+    from src.infra.kuzu_client import execute
+
+    execute(
+        agent_type,
+        """
+        CREATE NODE TABLE IF NOT EXISTS Concept(
+            id INT64,
+            label STRING,
+            PRIMARY KEY(id)
+        )
+        """,
+    )
+    execute(
+        agent_type,
+        """
+        CREATE REL TABLE IF NOT EXISTS RELATES_TO(
+            FROM Concept TO Concept
+        )
+        """,
+    )
+
+    execute(
+        agent_type,
+        f"""
+        UNWIND range(0, {node_count - 1}) AS id
+        CREATE (:Concept {{
+            id: id,
+            label: CASE WHEN id = 0 THEN 'root-concept' ELSE 'concept-' + CAST(id, 'STRING') END
+        }})
+        """,
+    )
+    execute(
+        agent_type,
+        f"""
+        UNWIND range(1, {node_count - 1}) AS id
+        MATCH (a:Concept {{id: id - 1}}), (b:Concept {{id: id}})
+        CREATE (a)-[:RELATES_TO]->(b)
+        """,
+    )
+
+
+def test_kuzu_multihop_query_performance(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KUZU_GRAPHS_DIR", str(tmp_path))
+
+    from src.infra.kuzu_client import execute
+
+    _seed_kuzu_test_graph("perf-test-agent", node_count=100_000)
+
+    start = time.perf_counter()
+    result = execute(
+        "perf-test-agent",
+        """
+        MATCH (a:Concept)-[:RELATES_TO*1..3]->(b:Concept)
+        WHERE a.label = $label
+        RETURN b
+        LIMIT 20
+        """,
+        {"label": "root-concept"},
+    )
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    assert result.get_num_tuples() == 3
+    assert elapsed_ms < 50, f"Query took {elapsed_ms:.1f}ms, expected < 50ms"

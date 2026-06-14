@@ -2,6 +2,7 @@ langgraph==1.0.0
 langchain-core==0.3.*
 langsmith==0.2.*
 temporalio==1.7.*
+kuzu==0.7.*  # production install should use Vela fork for multi-writer support
 qdrant-client==1.12.*
 asyncpg==0.30.*
 psycopg[async]==3.2.*
