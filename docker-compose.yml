@@ -1,4 +1,31 @@
 services:
+  redis:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM redis:7.2.6
+        RUN apt-get update \
+          && apt-get download redis-redisearch=1:1.2.2-4 \
+          && dpkg -i --force-depends ./redis-redisearch_1%3a1.2.2-4_amd64.deb \
+          && rm ./redis-redisearch_1%3a1.2.2-4_amd64.deb \
+          && rm -rf /var/lib/apt/lists/*
+    image: agent-worx/redis-redisearch:7.2.6
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--loadmodule",
+        "/usr/lib/redis/modules/redisearch.so",
+      ]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   postgres:
     build:
       context: .

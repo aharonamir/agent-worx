@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from src.infra.postgres_client import PostgresDatabase, create_pool, get_pool_config
+from src.infra.redis_client import create_redis_client, get_redis_config
 from src.temporal.config import get_temporal_config
 
 
@@ -121,3 +122,58 @@ async def test_postgres_databases_pgvector_and_pool_round_trip() -> None:
         assert server_version.startswith("16.4")
         assert vector_extension_count == 1
         assert pooled_connection_count >= 1
+
+
+def test_redis_compose_uses_pinned_base_with_redisearch() -> None:
+    compose = _compose_text()
+
+    assert "FROM redis:7.2.6" in compose
+    assert "redis-redisearch=1:1.2.2-4" in compose
+    assert "dpkg -i --force-depends" in compose
+    assert "redis-server" in compose
+    assert "--loadmodule" in compose
+    assert "/usr/lib/redis/modules/redisearch.so" in compose
+    assert '"6379:6379"' in compose
+
+
+def test_redis_config_defaults_to_localhost(monkeypatch) -> None:
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("REDIS_MAX_CONNECTIONS", raising=False)
+
+    config = get_redis_config()
+
+    assert config.url == "redis://localhost:6379/0"
+    assert config.max_connections == 20
+
+
+@pytest.mark.asyncio
+async def test_redis_ping_redisearch_and_stream_round_trip() -> None:
+    client = create_redis_client()
+    stream_name = "test:phase0:stream"
+    group_start = "0-0"
+    try:
+        assert await client.ping() is True
+
+        info = await client.info("server")
+        assert info["redis_version"].startswith("7.2.6")
+
+        modules = await client.module_list()
+        module_names = {
+            module.get("name", "").lower()
+            for module in modules
+            if isinstance(module, dict)
+        }
+        assert "ft" in module_names
+
+        await client.delete(stream_name)
+        message_id = await client.xadd(stream_name, {"event": "round-trip"})
+        messages = await client.xread({stream_name: group_start}, count=1, block=1000)
+
+        assert message_id
+        assert len(messages) == 1
+        returned_stream_name, returned_messages = messages[0]
+        assert returned_stream_name == stream_name
+        assert returned_messages == [(message_id, {"event": "round-trip"})]
+    finally:
+        await client.delete(stream_name)
+        await client.aclose()
