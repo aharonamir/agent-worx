@@ -3,9 +3,16 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import httpx
 import pytest
 
 from src.infra.postgres_client import PostgresDatabase, create_pool, get_pool_config
+from src.infra.qdrant_client import (
+    PAYLOAD_INDEXES,
+    create_qdrant_client,
+    ensure_certified_kb_collection,
+    get_qdrant_config,
+)
 from src.infra.redis_client import create_redis_client, get_redis_config
 from src.temporal.config import get_temporal_config
 
@@ -177,3 +184,41 @@ async def test_redis_ping_redisearch_and_stream_round_trip() -> None:
     finally:
         await client.delete(stream_name)
         await client.aclose()
+
+
+def test_qdrant_compose_uses_pinned_image_and_ports() -> None:
+    compose = _compose_text()
+
+    assert "qdrant/qdrant:v1.12.1" in compose
+    assert '"6333:6333"' in compose
+    assert '"6334:6334"' in compose
+
+
+def test_qdrant_config_defaults_to_certified_kb(monkeypatch) -> None:
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.delenv("QDRANT_COLLECTION", raising=False)
+    monkeypatch.delenv("EMBEDDING_DIM", raising=False)
+
+    config = get_qdrant_config()
+
+    assert config.url == "http://localhost:6333"
+    assert config.collection == "certified_kb"
+    assert config.embedding_dim == 1536
+
+
+def test_qdrant_health_collection_and_payload_indexes() -> None:
+    config = get_qdrant_config()
+    client = create_qdrant_client()
+
+    health = httpx.get(f"{config.url}/healthz")
+    assert health.status_code == 200
+    assert "healthz check passed" in health.text
+
+    ensure_certified_kb_collection(client)
+
+    collection = client.get_collection(config.collection)
+    assert collection.config.params.vectors.size == 1536
+    assert collection.config.params.vectors.distance.value == "Cosine"
+
+    indexed_fields = set(collection.payload_schema)
+    assert set(PAYLOAD_INDEXES) <= indexed_fields
