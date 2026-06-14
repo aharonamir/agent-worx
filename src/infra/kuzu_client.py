@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -8,13 +9,17 @@ import kuzu
 
 
 DEFAULT_KUZU_GRAPHS_DIR = Path("./graphs")
+AGENT_TYPE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 
 _connections: dict[tuple[Path, str], kuzu.Connection] = {}
 
 
 def _validate_agent_type(agent_type: str) -> None:
-    if not agent_type or "/" in agent_type or "\\" in agent_type:
-        raise ValueError("agent_type must be a single path segment")
+    if not AGENT_TYPE_PATTERN.fullmatch(agent_type):
+        raise ValueError(
+            "agent_type must be a single path segment using letters, numbers, "
+            "underscores, or hyphens"
+        )
 
 
 def get_graphs_dir() -> Path:

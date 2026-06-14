@@ -245,8 +245,18 @@ def test_kuzu_shared_per_type_not_per_instance(tmp_path, monkeypatch) -> None:
     assert conn is not conn3
     assert not (tmp_path / "burger-order" / "instance-1" / "domain.kuzu").exists()
 
-    with pytest.raises(ValueError, match="single path segment"):
-        get_connection("burger-order/instance-1")
+    invalid_agent_types = [
+        "",
+        ".",
+        "..",
+        ".hidden",
+        "burger-order/instance-1",
+        "burger-order\\instance-1",
+        "burger order",
+    ]
+    for invalid_agent_type in invalid_agent_types:
+        with pytest.raises(ValueError, match="single path segment"):
+            get_connection(invalid_agent_type)
 
 
 def _seed_kuzu_test_graph(agent_type: str, node_count: int) -> None:
