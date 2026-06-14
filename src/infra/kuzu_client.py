@@ -13,6 +13,63 @@ AGENT_TYPE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 
 _connections: dict[tuple[Path, str], kuzu.Connection] = {}
 
+SCHEMA_DDL = [
+    """
+    CREATE NODE TABLE IF NOT EXISTS Concept(
+        id STRING,
+        label STRING,
+        namespace STRING,
+        confidence FLOAT,
+        created_at STRING,
+        PRIMARY KEY(id)
+    )
+    """,
+    """
+    CREATE NODE TABLE IF NOT EXISTS Constraint(
+        id STRING,
+        description STRING,
+        severity STRING,
+        PRIMARY KEY(id)
+    )
+    """,
+    """
+    CREATE REL TABLE IF NOT EXISTS RELATES_TO(
+        FROM Concept TO Concept,
+        relation STRING,
+        confidence FLOAT,
+        version INT
+    )
+    """,
+    """
+    CREATE REL TABLE IF NOT EXISTS HAS_CONSTRAINT(
+        FROM Concept TO Constraint
+    )
+    """,
+    """
+    CREATE NODE TABLE IF NOT EXISTS AgentRole(
+        id STRING,
+        name STRING,
+        input_schema STRING,
+        output_schema STRING,
+        prohibited_fields STRING,
+        PRIMARY KEY(id)
+    )
+    """,
+    """
+    CREATE REL TABLE IF NOT EXISTS HANDS_OFF_TO(
+        FROM AgentRole TO AgentRole,
+        condition STRING,
+        validates STRING,
+        confidence FLOAT
+    )
+    """,
+    """
+    CREATE REL TABLE IF NOT EXISTS HAS_ROLE(
+        FROM Concept TO AgentRole
+    )
+    """,
+]
+
 
 def _validate_agent_type(agent_type: str) -> None:
     if not AGENT_TYPE_PATTERN.fullmatch(agent_type):
@@ -50,3 +107,9 @@ def execute(agent_type: str, query: str, params: dict[str, Any] | None = None):
     if params:
         return conn.execute(query, params)
     return conn.execute(query)
+
+
+def initialize_schema(agent_type: str) -> None:
+    conn = get_connection(agent_type)
+    for ddl in SCHEMA_DDL:
+        conn.execute(ddl)
