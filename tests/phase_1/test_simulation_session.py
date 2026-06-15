@@ -134,12 +134,12 @@ async def test_resolve_clarify_contract_unblocks_session(agent_type: str) -> Non
     session = await _start(agent_type)
     sm.submit_turn(
         session.id,
-        SimulationTurnInput(role="order-agent", message="Order placed with card"),
+        SimulationTurnInput(role="order-agent", message="Order placed for table 7"),
         to_agent="kitchen-agent",
         message_fields={
             "order_id": "ord-1",
             "items": ["burger"],
-            "card_token": "tok_123",
+            "table_number": 7,
         },
     )
 
@@ -153,16 +153,16 @@ async def test_resolve_clarify_contract_unblocks_session(agent_type: str) -> Non
     assert resolution == {"resolved": True, "coord_edge_written": True}
     assert session.turn_history[-1].paused_for_violation is False
     assert session.turn_history[-1].observations[0].coord_edge_written is True
-    assert sm._session_agents[session.id][1].input_schema["card_token"] == "str"
+    assert sm._session_agents[session.id][1].input_schema["table_number"] == "str"
 
     result = sm.submit_turn(
         session.id,
-        SimulationTurnInput(role="order-agent", message="retry with card"),
+        SimulationTurnInput(role="order-agent", message="retry with table"),
         to_agent="kitchen-agent",
         message_fields={
             "order_id": "ord-2",
             "items": ["fries"],
-            "card_token": "tok_456",
+            "table_number": 8,
         },
     )
     assert result.paused_for_violation is False
