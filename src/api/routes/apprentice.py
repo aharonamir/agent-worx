@@ -3,11 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from src.apprentice.answer_processor import process_answer
+from src.apprentice.graph_writer import write_to_graph
 from src.apprentice.question_generator import NoGapsRemaining, generate_question
 from src.apprentice.question_generator import generate_followup
 from src.core.agent_type_service import get_agent_type_by_name
 from src.core.enums import Phase
-from src.core.models import AnswerProcessorInput, AnswerProcessorResult
+from src.core.models import AnswerProcessorInput
 
 
 router = APIRouter(prefix="/agent-types", tags=["apprentice"])
@@ -65,10 +66,6 @@ async def submit_answer(agent_type_id: str, body: dict):
         response["processor_result"] = result
 
     return response
-
-
-def write_to_graph(agent_type: str, result: AnswerProcessorResult) -> None:
-    raise NotImplementedError("Graph writer is implemented in T1.5")
 
 
 def compute_and_store(agent_type: str):
