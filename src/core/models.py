@@ -42,6 +42,25 @@ class AgentTypeResponse(BaseModel):
     created_at: datetime
 
 
+class KnowledgeGap(BaseModel):
+    concept_id: str
+    concept_label: str
+    gap_type: Literal["orphan", "low_confidence", "unexplored"]
+    severity: float = Field(..., ge=0.0, le=1.0)
+    breadth: int = Field(..., ge=0)
+    priority_score: float = Field(..., ge=0.0)
+    namespace: Literal["task", "coordination"]
+
+
+class GapDetectorResult(BaseModel):
+    agent_type_id: str
+    gaps: list[KnowledgeGap]
+    total_nodes: int
+    orphan_count: int
+    low_confidence_count: int
+    unexplored_count: int
+
+
 class DeltaEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     agent_type: str
