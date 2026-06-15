@@ -148,6 +148,49 @@ class ProposalArtifact(BaseModel):
     signed_at: datetime | None = None
 
 
+class SimulationTurnInput(BaseModel):
+    role: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
+class SimulationObservation(BaseModel):
+    type: ObservationType
+    description: str
+    turn_index: int
+    roles_involved: list[str]
+    coord_edge_written: bool = False
+
+
+class ContractViolation(BaseModel):
+    field: str
+    reason: str
+    from_agent: str
+    to_agent: str
+    resolution: Literal["pending", "clarify_contract", "mark_edge_case"] = "pending"
+
+
+class SimulationTurnResult(BaseModel):
+    turn_index: int
+    role: str
+    message: str
+    violations: list[ContractViolation]
+    observations: list[SimulationObservation]
+    paused_for_violation: bool
+
+
+class SimulationSession(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    agent_type_id: str
+    composition_version: int
+    current_role: str | None = None
+    turn_history: list[SimulationTurnResult] = Field(default_factory=list)
+    observations: list[SimulationObservation] = Field(default_factory=list)
+    coord_namespace_writes: list[dict[str, Any]] = Field(default_factory=list)
+    status: Literal["active", "closed"] = "active"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    closed_at: datetime | None = None
+
+
 class DeltaEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     agent_type: str

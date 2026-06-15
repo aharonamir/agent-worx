@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from src.api.routes import agent_types, apprentice, proposals
+from src.api.routes import agent_types, apprentice, proposals, simulations
 from src.infra.postgres_client import close_pool, init_pool, initialize_knowledge_schema
 
 
@@ -23,6 +23,7 @@ app = FastAPI(lifespan=lifespan, title="Agent Lifecycle Framework")
 app.include_router(agent_types.router, prefix="/api/v1")
 app.include_router(apprentice.router, prefix="/api/v1")
 app.include_router(proposals.router, prefix="/api/v1")
+app.include_router(simulations.router, prefix="/api/v1")
 
 
 @app.exception_handler(RequestValidationError)
