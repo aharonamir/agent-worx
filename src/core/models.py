@@ -13,7 +13,33 @@ from src.core.enums import (
     DeltaStatus,
     FlagCategory,
     ObservationType,
+    Phase,
+    TopologyType,
 )
+
+
+class AgentTypeCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    goal: str = Field(..., min_length=10, max_length=500)
+    task_boundary: str = Field(..., min_length=10, max_length=1000)
+    topic_list: list[str] = Field(..., min_length=1, max_length=50)
+    topology_type: TopologyType
+    workflow_participants: list[str] = Field(default_factory=list)
+
+
+class AgentTypeResponse(BaseModel):
+    agent_type_id: str
+    name: str
+    goal: str
+    task_boundary: str
+    topic_list: list[str]
+    topology_type: TopologyType
+    workflow_participants: list[str]
+    phase: Phase
+    learning_rate: float
+    readiness_score: float
+    graph_initialized: bool
+    created_at: datetime
 
 
 class DeltaEntry(BaseModel):
