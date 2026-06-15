@@ -61,6 +61,14 @@ class GapDetectorResult(BaseModel):
     unexplored_count: int
 
 
+class QuestionGeneratorResult(BaseModel):
+    agent_type_id: str
+    question: str
+    targeting_gap: KnowledgeGap
+    is_followup: bool = False
+    parent_question_id: str | None = None
+
+
 class DeltaEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     agent_type: str

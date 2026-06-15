@@ -102,6 +102,12 @@ def get_connection(agent_type: str) -> kuzu.Connection:
     return _connections[key]
 
 
+def close_connections() -> None:
+    for conn in _connections.values():
+        conn.close()
+    _connections.clear()
+
+
 def execute(agent_type: str, query: str, params: dict[str, Any] | None = None):
     conn = get_connection(agent_type)
     if params:

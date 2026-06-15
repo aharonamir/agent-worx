@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from src.apprentice.gap_detector import detect_gaps
-from src.infra.kuzu_client import execute, initialize_schema
+from src.infra.kuzu_client import close_connections, execute, initialize_schema
 
 
 @pytest.fixture
@@ -11,7 +11,8 @@ def agent_type(tmp_path, monkeypatch) -> str:
     monkeypatch.setenv("KUZU_GRAPHS_DIR", str(tmp_path))
     atype = "test-gaps"
     initialize_schema(atype)
-    return atype
+    yield atype
+    close_connections()
 
 
 def _add_concept(

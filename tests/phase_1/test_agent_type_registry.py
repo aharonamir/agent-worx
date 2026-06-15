@@ -19,6 +19,7 @@ from src.infra.postgres_client import (
     init_pool,
     initialize_knowledge_schema,
 )
+from src.infra.kuzu_client import close_connections
 from src.infra.redis_client import close_client, redis_delete, redis_get
 
 
@@ -27,6 +28,7 @@ async def app_ready() -> AsyncIterator[None]:
     pool = await init_pool()
     await initialize_knowledge_schema(pool)
     yield
+    close_connections()
     await close_pool()
     close_client()
 
