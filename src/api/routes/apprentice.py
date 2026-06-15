@@ -6,6 +6,7 @@ from src.apprentice.answer_processor import process_answer
 from src.apprentice.graph_writer import write_to_graph
 from src.apprentice.question_generator import NoGapsRemaining, generate_question
 from src.apprentice.question_generator import generate_followup
+from src.apprentice.readiness_scorer import compute_and_store
 from src.core.agent_type_service import get_agent_type_by_name
 from src.core.enums import Phase
 from src.core.models import AnswerProcessorInput
@@ -27,6 +28,12 @@ async def get_next_question(agent_type_id: str):
         return generate_question(agent.name, agent.goal, agent.task_boundary)
     except NoGapsRemaining as exc:
         return {"detail": "no_gaps_remaining", "agent_type": exc.agent_type}
+
+
+@router.get("/{agent_type_id}/readiness")
+async def get_readiness(agent_type_id: str):
+    agent = await get_agent_type_by_name(agent_type_id)
+    return compute_and_store(agent.name)
 
 
 @router.post("/{agent_type_id}/qa/answer")
@@ -66,7 +73,3 @@ async def submit_answer(agent_type_id: str, body: dict):
         response["processor_result"] = result
 
     return response
-
-
-def compute_and_store(agent_type: str):
-    raise NotImplementedError("Readiness scorer is implemented in T1.6")

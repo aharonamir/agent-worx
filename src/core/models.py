@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -104,6 +104,17 @@ class AnswerProcessorResult(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     conflict: ConflictDetail | None = None
     follow_up_question: str | None = None
+
+
+class ReadinessScore(BaseModel):
+    agent_type_id: str
+    score: float = Field(..., ge=0.0, le=1.0)
+    node_coverage: float = Field(..., ge=0.0, le=1.0)
+    edge_density: float = Field(..., ge=0.0, le=1.0)
+    confidence_mean: float = Field(..., ge=0.0, le=1.0)
+    proposal_ready: bool
+    cert_ready: bool
+    computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class DeltaEntry(BaseModel):
