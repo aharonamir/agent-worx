@@ -84,6 +84,7 @@ async def generate_proposal(
     task_boundary: str,
     declared_topology: TopologyType,
     workflow_participants: list[str],
+    rejection_context: str | None = None,
 ) -> ProposalArtifact:
     clusters = _find_clusters(agent_type)
     cross_edges = _find_cross_cluster_edges(agent_type, clusters)
@@ -95,6 +96,11 @@ async def generate_proposal(
         cluster_summaries=_format_cluster_summaries(clusters),
         cross_cluster_edges=_format_cross_cluster_edges(cross_edges),
     )
+    if rejection_context:
+        prompt += (
+            "\nA previous proposal was rejected for this reason: "
+            f"{rejection_context}\nAddress this feedback in the new proposal.\n"
+        )
 
     response = _client.messages.create(
         model=PROPOSAL_MODEL,
