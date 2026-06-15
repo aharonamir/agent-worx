@@ -7,13 +7,13 @@
 ## Python
 
 ```txt
-# requirements.txt
-python==3.12.*
+# pyproject.toml
+python>=3.12,<3.14
 
 # Core framework
 langgraph==1.0.0
 langchain-core==0.3.*
-langsmith==0.2.*
+langsmith==0.3.*
 
 # Temporal
 temporalio==1.7.*
@@ -26,7 +26,7 @@ qdrant-client==1.12.*
 
 # Relational / KV
 asyncpg==0.30.*
-psycopg[async]==3.2.*
+psycopg==3.2.*
 redis==5.2.*
 
 # API

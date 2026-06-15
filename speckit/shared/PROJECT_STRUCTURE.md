@@ -10,7 +10,8 @@
 agent-lifecycle-framework/
 ├── docker-compose.yml               # All infra services
 ├── .env.example                     # Environment variable template
-├── requirements.txt                 # Python deps (from DEPENDENCIES.md)
+├── pyproject.toml                  # Python package metadata + uv-managed deps
+├── uv.lock                         # uv lockfile
 ├── pyproject.toml                   # Project metadata + tool config
 │
 ├── alembic/                         # DB migrations
