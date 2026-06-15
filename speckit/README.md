@@ -1,8 +1,8 @@
-# Agent Worx — Spec-Kit
+# Agent Lifecycle Framework — Spec-Kit
 
 ## Purpose
 
-This repository is the implementation specification for the Agent Worx.
+This repository is the implementation specification for the Agent Lifecycle Framework.
 It is structured for consumption by AI coding agents (Claude, Codex, etc.) and human engineers equally.
 
 **Read this file first. Then read the phase file. Then read individual task cards in order.**

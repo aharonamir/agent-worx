@@ -27,13 +27,13 @@ All items in the checklist below are passing.
 Run before proceeding to Phase 1.
 
 ```
-[ ] T0.1 — Temporal UI accessible at localhost:8080, namespace agent-platform registered
+[ ] T0.1 — Temporal UI accessible at localhost:8088, namespace agent-platform registered
 [ ] T0.2 — All three Postgres DBs created, pgvector extension confirmed, connection pooling active
 [ ] T0.3 — Redis PING returns PONG, RediSearch module active, Streams round-trip passes
 [ ] T0.4 — Qdrant /healthz returns ok, certified_kb collection created, payload indexes active
 [ ] T0.5 — Kuzu imports without error, multi-hop query on 100K node graph completes < 50ms
 [ ] T0.6 — Kuzu schema (all 4 node tables, all 3 rel tables) created for a test agent type
-[ ] T0.7 — All 4 Postgres tables created, INSERT+SELECT round-trip passes on each
+[ ] T0.7 — All 5 Postgres tables created, INSERT+SELECT round-trip passes on each
 [ ] T0.8 — All Redis key patterns tested with HSET/HGET/XADD/XREAD
 [ ] ALL  — Single connectivity test script touches all 5 services and returns green
 ```
