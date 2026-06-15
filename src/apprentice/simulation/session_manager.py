@@ -18,6 +18,7 @@ from src.core.models import (
     SimulationTurnResult,
 )
 from src.infra.kuzu_client import execute
+from src.infra.postgres_client import insert_simulation_session_summary
 
 
 _sessions: dict[str, SimulationSession] = {}
@@ -171,12 +172,23 @@ async def close_session(session_id: str) -> dict:
 
     session.status = "closed"
     session.closed_at = datetime.now(UTC)
-    return {
+    summary = {
         "session_id": session_id,
+        "agent_type": agent_type,
+        "composition_version": session.composition_version,
         "coord_edges_written": coord_edges_written,
         "observations_captured": len(session.observations),
         "violations_total": violations_total,
         "violations_unresolved": violations_unresolved,
+        "closed_at": session.closed_at.replace(tzinfo=None),
+    }
+    await insert_simulation_session_summary(summary)
+    return {
+        "session_id": summary["session_id"],
+        "coord_edges_written": summary["coord_edges_written"],
+        "observations_captured": summary["observations_captured"],
+        "violations_total": summary["violations_total"],
+        "violations_unresolved": summary["violations_unresolved"],
     }
 
 

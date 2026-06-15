@@ -27,3 +27,14 @@ class ProposalAlreadyApproved(Exception):
             f"Proposal version {version} for '{agent_type}' is already approved "
             "and immutable"
         )
+
+
+class AgentNotInPhase(Exception):
+    def __init__(self, agent_type: str, expected, actual):
+        self.agent_type = agent_type
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Agent '{agent_type}' is in phase '{actual.value}', "
+            f"but this operation requires phase '{expected.value}'"
+        )

@@ -214,7 +214,17 @@ class CertEvent(BaseModel):
     expert_id: str
     readiness_score: float
     notes: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class CertApproveRequest(BaseModel):
+    expert_id: str = Field(..., min_length=1)
+    notes: str = Field(default="", max_length=2000)
+
+
+class CertRejectRequest(BaseModel):
+    expert_id: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=10, max_length=2000)
 
 
 class ShadowReview(BaseModel):

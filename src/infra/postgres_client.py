@@ -159,6 +159,23 @@ KNOWLEDGE_SCHEMA_DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_cert_agent_type ON cert_events(agent_type)",
     """
+    CREATE TABLE IF NOT EXISTS simulation_session_summaries (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        agent_type VARCHAR(100) NOT NULL,
+        session_id VARCHAR(100) NOT NULL,
+        composition_version INT NOT NULL,
+        coord_edges_written INT NOT NULL,
+        observations_captured INT NOT NULL,
+        violations_total INT NOT NULL,
+        violations_unresolved INT NOT NULL,
+        closed_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_sim_summary_agent_type
+    ON simulation_session_summaries(agent_type)
+    """,
+    """
     CREATE TABLE IF NOT EXISTS shadow_reviews (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         task_id VARCHAR(100) NOT NULL,
@@ -402,7 +419,35 @@ async def insert_cert_event(event: CertEvent) -> None:
             event.expert_id,
             event.readiness_score,
             event.notes,
-            event.created_at,
+            event.created_at.replace(tzinfo=None),
+        )
+
+
+async def insert_simulation_session_summary(summary: dict) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO simulation_session_summaries (
+                agent_type,
+                session_id,
+                composition_version,
+                coord_edges_written,
+                observations_captured,
+                violations_total,
+                violations_unresolved,
+                closed_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            """,
+            summary["agent_type"],
+            summary["session_id"],
+            summary["composition_version"],
+            summary["coord_edges_written"],
+            summary["observations_captured"],
+            summary["violations_total"],
+            summary["violations_unresolved"],
+            summary["closed_at"],
         )
 
 

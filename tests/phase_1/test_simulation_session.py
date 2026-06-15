@@ -5,12 +5,19 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+import pytest_asyncio
 
 from src.api.main import app
 from src.apprentice.simulation import session_manager as sm
 from src.core.enums import CompositionStatus, ObservationType, TopologyType
 from src.core.models import AgentContract, ProposalArtifact, SimulationTurnInput
 from src.infra.kuzu_client import close_connections, execute, initialize_schema
+from src.infra.postgres_client import (
+    close_pool,
+    get_pool,
+    init_pool,
+    initialize_knowledge_schema,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +36,18 @@ def agent_type(tmp_path, monkeypatch) -> str:
     initialize_schema(atype)
     yield atype
     close_connections()
+
+
+@pytest_asyncio.fixture
+async def pg_ready():
+    pool = await init_pool()
+    await initialize_knowledge_schema(pool)
+    yield
+    async with get_pool().acquire() as conn:
+        await conn.execute(
+            "DELETE FROM simulation_session_summaries WHERE agent_type = 'test-sim'"
+        )
+    await close_pool()
 
 
 def _approved_proposal(agent_type: str) -> ProposalArtifact:
@@ -197,7 +216,10 @@ async def test_resolve_mark_edge_case_unblocks_without_contract_change(
 
 
 @pytest.mark.asyncio
-async def test_close_session_writes_roles_and_handoff_edges(agent_type: str) -> None:
+async def test_close_session_writes_roles_and_handoff_edges(
+    agent_type: str,
+    pg_ready,
+) -> None:
     session = await _start(agent_type)
     sm.submit_turn(
         session.id,
