@@ -10,6 +10,7 @@ from src.core.enums import (
     CertDecision,
     CertGate,
     CircuitState,
+    CompositionStatus,
     DeltaStatus,
     FlagCategory,
     ObservationType,
@@ -115,6 +116,36 @@ class ReadinessScore(BaseModel):
     proposal_ready: bool
     cert_ready: bool
     computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AgentContract(BaseModel):
+    agent_name: str
+    input_schema: dict[str, str]
+    output_schema: dict[str, str]
+    prohibited_fields: list[str] = Field(default_factory=list)
+
+
+class HandoffContract(BaseModel):
+    from_agent: str
+    to_agent: str
+    condition: str
+    validates: list[str]
+    rationale: str
+
+
+class ProposalArtifact(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    agent_type_id: str
+    version: int = 1
+    topology: TopologyType
+    agents: list[AgentContract]
+    contracts: list[HandoffContract]
+    rationale_per_agent: dict[str, str]
+    rationale_per_contract: dict[str, str]
+    status: CompositionStatus = CompositionStatus.PROPOSED
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expert_signature: str | None = None
+    signed_at: datetime | None = None
 
 
 class DeltaEntry(BaseModel):
