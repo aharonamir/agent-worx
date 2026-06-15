@@ -69,6 +69,43 @@ class QuestionGeneratorResult(BaseModel):
     parent_question_id: str | None = None
 
 
+class AnswerProcessorInput(BaseModel):
+    agent_type_id: str
+    question: str
+    answer: str
+    gap_context: KnowledgeGap
+
+
+class ExtractedEntity(BaseModel):
+    label: str
+    entity_type: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+class ExtractedRelation(BaseModel):
+    source: str
+    target: str
+    relation_type: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+class ConflictDetail(BaseModel):
+    existing_source: str
+    existing_target: str
+    existing_relation: str
+    existing_confidence: float = Field(..., ge=0.0, le=1.0)
+    conflict_description: str
+
+
+class AnswerProcessorResult(BaseModel):
+    status: Literal["write", "conflict", "follow_up"]
+    entities: list[ExtractedEntity] = Field(default_factory=list)
+    relations: list[ExtractedRelation] = Field(default_factory=list)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    conflict: ConflictDetail | None = None
+    follow_up_question: str | None = None
+
+
 class DeltaEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     agent_type: str
