@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import ast
 import time
+import uuid
 from pathlib import Path
 
 import httpx
 import pytest
+from qdrant_client.http import models
+from temporalio.client import Client
+from temporalio.worker import Worker
 
 from src.infra.postgres_client import PostgresDatabase, create_pool, get_pool_config
 from src.infra.qdrant_client import (
@@ -16,6 +20,7 @@ from src.infra.qdrant_client import (
 )
 from src.infra.redis_client import create_redis_client, get_redis_config
 from src.temporal.config import get_temporal_config
+from src.temporal.workflows import HelloWorkflow, hello_activity
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +39,7 @@ def test_temporal_compose_uses_pinned_images_and_namespace() -> None:
     assert 'SKIP_DEFAULT_NAMESPACE_CREATION: "false"' in compose
     assert '"7233:7233"' in compose
     assert '"8080:8080"' in compose
+    assert '"8088:8080"' in compose
 
 
 def test_temporal_config_defaults_to_agent_platform(monkeypatch) -> None:
@@ -44,6 +50,28 @@ def test_temporal_config_defaults_to_agent_platform(monkeypatch) -> None:
 
     assert config.host == "localhost:7233"
     assert config.namespace == "agent-platform"
+
+
+@pytest.mark.asyncio
+async def test_temporal_hello_workflow_executes() -> None:
+    config = get_temporal_config()
+    client = await Client.connect(config.host, namespace=config.namespace)
+    workflow_id = f"test-hello-workflow-{uuid.uuid4()}"
+
+    async with Worker(
+        client,
+        task_queue="test-hello-queue",
+        workflows=[HelloWorkflow],
+        activities=[hello_activity],
+    ):
+        result = await client.execute_workflow(
+            HelloWorkflow.run,
+            "World",
+            id=workflow_id,
+            task_queue="test-hello-queue",
+        )
+
+    assert result == "Hello, World!"
 
 
 def test_sqlite_saver_is_not_imported() -> None:
@@ -64,14 +92,18 @@ def test_sqlite_saver_is_not_imported() -> None:
 
 def test_postgres_compose_creates_three_databases_with_pgvector() -> None:
     compose = _compose_text()
+    init_sql = (ROOT / "infra" / "postgres" / "init.sql").read_text()
 
     assert "FROM postgres:16.4" in compose
     assert "postgresql-16-pgvector=0.8.2-1.pgdg12+1" in compose
     assert "dpkg -i --force-breaks" in compose
-    assert "CREATE DATABASE agent_knowledge;" in compose
-    assert "CREATE DATABASE agent_ops;" in compose
+    assert "CREATE DATABASE agent_knowledge;" in init_sql
+    assert "CREATE DATABASE agent_ops;" in init_sql
+    assert "POSTGRES_USER: alf" in compose
+    assert "POSTGRES_PASSWORD: alfpass" in compose
     assert "POSTGRES_DB: agent_checkpoints" in compose
-    assert "CREATE EXTENSION IF NOT EXISTS vector;" in compose
+    assert "CREATE EXTENSION IF NOT EXISTS vector;" in init_sql
+    assert 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' in init_sql
     assert '"5432:5432"' in compose
     assert '"max_connections=200"' in compose
 
@@ -94,8 +126,8 @@ def test_postgres_pool_config_defaults_to_three_databases(monkeypatch) -> None:
     assert configs[PostgresDatabase.CHECKPOINTS].dsn.endswith("/agent_checkpoints")
     assert configs[PostgresDatabase.KNOWLEDGE].dsn.endswith("/agent_knowledge")
     assert configs[PostgresDatabase.OPS].dsn.endswith("/agent_ops")
-    assert all(config.min_size == 1 for config in configs.values())
-    assert all(config.max_size == 10 for config in configs.values())
+    assert all(config.min_size == 2 for config in configs.values())
+    assert all(config.max_size == 20 for config in configs.values())
 
 
 @pytest.mark.asyncio
@@ -154,18 +186,17 @@ def test_redis_config_defaults_to_localhost(monkeypatch) -> None:
     assert config.max_connections == 20
 
 
-@pytest.mark.asyncio
-async def test_redis_ping_redisearch_and_stream_round_trip() -> None:
+def test_redis_ping_redisearch_and_stream_round_trip() -> None:
     client = create_redis_client()
     stream_name = "test:phase0:stream"
     group_start = "0-0"
     try:
-        assert await client.ping() is True
+        assert client.ping() is True
 
-        info = await client.info("server")
+        info = client.info("server")
         assert info["redis_version"].startswith("7.2.6")
 
-        modules = await client.module_list()
+        modules = client.module_list()
         module_names = {
             module.get("name", "").lower()
             for module in modules
@@ -173,9 +204,9 @@ async def test_redis_ping_redisearch_and_stream_round_trip() -> None:
         }
         assert "ft" in module_names
 
-        await client.delete(stream_name)
-        message_id = await client.xadd(stream_name, {"event": "round-trip"})
-        messages = await client.xread({stream_name: group_start}, count=1, block=1000)
+        client.delete(stream_name)
+        message_id = client.xadd(stream_name, {"event": "round-trip"})
+        messages = client.xread({stream_name: group_start}, count=1, block=1000)
 
         assert message_id
         assert len(messages) == 1
@@ -183,8 +214,8 @@ async def test_redis_ping_redisearch_and_stream_round_trip() -> None:
         assert returned_stream_name == stream_name
         assert returned_messages == [(message_id, {"event": "round-trip"})]
     finally:
-        await client.delete(stream_name)
-        await client.aclose()
+        client.delete(stream_name)
+        client.close()
 
 
 def test_qdrant_compose_uses_pinned_image_and_ports() -> None:
@@ -223,6 +254,75 @@ def test_qdrant_health_collection_and_payload_indexes() -> None:
 
     indexed_fields = set(collection.payload_schema)
     assert set(PAYLOAD_INDEXES) <= indexed_fields
+
+
+def _fake_vector(seed: float, dim: int = 1536) -> list[float]:
+    return [seed] * dim
+
+
+def test_qdrant_upsert_search_and_filters() -> None:
+    from src.infra import qdrant_client
+
+    config = qdrant_client.get_qdrant_config()
+    qdrant_client.setup_collection()
+
+    agent_type = f"burger-order-{uuid.uuid4()}"
+    low_confidence_id = str(uuid.uuid4())
+    apprentice_id = str(uuid.uuid4())
+    work_id = str(uuid.uuid4())
+
+    qdrant_client.upsert_knowledge(
+        low_confidence_id,
+        _fake_vector(0.5),
+        {
+            "agent_type": agent_type,
+            "phase": "journeyman",
+            "confidence": 0.5,
+            "version": 1,
+            "text": "low confidence fact",
+        },
+    )
+    qdrant_client.upsert_knowledge(
+        apprentice_id,
+        _fake_vector(0.9),
+        {
+            "agent_type": agent_type,
+            "phase": "apprentice",
+            "confidence": 0.9,
+            "version": 1,
+            "text": "apprentice fact",
+        },
+    )
+    qdrant_client.upsert_knowledge(
+        work_id,
+        _fake_vector(0.9),
+        {
+            "agent_type": agent_type,
+            "phase": "work",
+            "confidence": 0.9,
+            "version": 1,
+            "text": "work fact",
+        },
+    )
+
+    results = qdrant_client.search_knowledge(
+        query_vector=_fake_vector(0.9),
+        agent_type=agent_type,
+        min_confidence=0.7,
+        phases=["journeyman", "work"],
+        top_k=10,
+    )
+    result_ids = {result["id"] for result in results}
+    assert work_id in result_ids
+    assert apprentice_id not in result_ids
+    assert low_confidence_id not in result_ids
+
+    qdrant_client.get_client().delete(
+        collection_name=config.collection,
+        points_selector=models.PointIdsList(
+            points=[low_confidence_id, apprentice_id, work_id]
+        ),
+    )
 
 
 def test_kuzu_shared_per_type_not_per_instance(tmp_path, monkeypatch) -> None:

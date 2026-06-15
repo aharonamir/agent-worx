@@ -2,9 +2,20 @@ from __future__ import annotations
 
 import uuid
 
+import asyncpg
 import pytest
 
-from src.infra.postgres_client import PostgresDatabase, create_pool, initialize_ops_schema
+from src.core.enums import ObservationType
+from src.core.models import DeltaEntry
+from src.infra.postgres_client import (
+    PostgresDatabase,
+    close_pool,
+    create_pool,
+    get_quarantine_entries,
+    init_pool,
+    initialize_knowledge_schema,
+    insert_delta_entry,
+)
 
 
 POSTGRES_SCHEMA_TABLES = {
@@ -25,10 +36,10 @@ POSTGRES_SCHEMA_INDEXES = {
 
 @pytest.mark.asyncio
 async def test_postgres_ops_schema_tables_insert_select_round_trip() -> None:
-    pool = await create_pool(PostgresDatabase.OPS)
+    pool = await create_pool(PostgresDatabase.KNOWLEDGE)
     marker = f"phase0-{uuid.uuid4()}"
     try:
-        await initialize_ops_schema(pool)
+        await initialize_knowledge_schema(pool)
 
         async with pool.acquire() as conn:
             table_names = set(
@@ -202,10 +213,98 @@ async def test_postgres_ops_schema_tables_insert_select_round_trip() -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgres_ops_schema_idempotent() -> None:
-    pool = await create_pool(PostgresDatabase.OPS)
+async def test_postgres_knowledge_schema_constraints_and_helpers() -> None:
+    marker = f"phase0-{uuid.uuid4()}"
+    await init_pool()
     try:
-        await initialize_ops_schema(pool)
-        await initialize_ops_schema(pool)
+        await initialize_knowledge_schema()
+        entry = DeltaEntry(
+            agent_type=marker,
+            agent_instance_id="instance-1",
+            observation_type=ObservationType.LEARNED,
+            edge_data={"source": "expert"},
+            triggered_by_task_id="task-1",
+            confidence=0.8,
+        )
+        await insert_delta_entry(entry)
+        entries = await get_quarantine_entries(marker)
+
+        assert len(entries) == 1
+        assert entries[0]["agent_type"] == marker
+        assert entries[0]["status"] == "quarantine"
+
+        pool = await create_pool(PostgresDatabase.KNOWLEDGE)
+        try:
+            async with pool.acquire() as conn:
+                with pytest.raises(asyncpg.CheckViolationError):
+                    await conn.execute(
+                        """
+                        INSERT INTO delta_entries (
+                            agent_type,
+                            agent_instance_id,
+                            status,
+                            observation_type,
+                            edge_data,
+                            triggered_by_task_id,
+                            confidence
+                        )
+                        VALUES (
+                            $1,
+                            'instance-1',
+                            'bogus',
+                            'learned',
+                            '{"source":"expert"}',
+                            'task-1',
+                            0.7
+                        )
+                        """,
+                        marker,
+                    )
+
+                await conn.execute(
+                    """
+                    INSERT INTO team_compositions (
+                        agent_type,
+                        version,
+                        topology,
+                        agent_list,
+                        contracts
+                    )
+                    VALUES ($1, 42, 'pipeline', '[]', '[]')
+                    """,
+                    marker,
+                )
+                with pytest.raises(asyncpg.UniqueViolationError):
+                    await conn.execute(
+                        """
+                        INSERT INTO team_compositions (
+                            agent_type,
+                            version,
+                            topology,
+                            agent_list,
+                            contracts
+                        )
+                        VALUES ($1, 42, 'pipeline', '[]', '[]')
+                        """,
+                        marker,
+                    )
+        finally:
+            async with pool.acquire() as conn:
+                for table_name in POSTGRES_SCHEMA_TABLES:
+                    await conn.execute(
+                        f"DELETE FROM {table_name} WHERE agent_type = $1",
+                        marker,
+                    )
+            await pool.close()
+    finally:
+        await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_postgres_knowledge_schema_idempotent() -> None:
+    pool = await create_pool(PostgresDatabase.KNOWLEDGE)
+    try:
+        await initialize_knowledge_schema(pool)
+        await initialize_knowledge_schema(pool)
     finally:
         await pool.close()
